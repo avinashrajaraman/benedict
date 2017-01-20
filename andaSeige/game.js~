@@ -1,0 +1,662 @@
+(function(){
+
+
+        // Gravity Banks ! 
+        // ViewPort 
+        //
+        var canvas = document.getElementById("canvas"),
+        ctx = canvas.getContext("2d")
+
+        var egg = {}
+        var enemy = {}
+        var height = canvas.height;
+        var width = canvas.width;
+        var terrain = []; //Store the terrain values 
+
+        window.requestAnimFrame = function(){
+                
+                return (
+                        window.requestAnimationFrame       ||
+                        window.webkitRequestAnimationFrame ||
+                        window.mozRequestAnimationFrame    ||
+                        window.oRequestAnimationFrame      ||
+                        window.msRequestAnimationFrame     ||
+                        function(/* function */ callback){
+                                window.setTimeout(callback, 1000 / 60);
+                        }
+                
+                );
+        }();
+        
+
+        var HASH_COLOR  = {
+                 
+                582044927 : "green",
+                2139062271 : "green",
+                4294967295 : "health",
+                2739512575 : "purple",
+                4289645055 : "green",
+                4286523391 :  "green",
+                4294050047 : "green",
+                10676479 : "blue",
+                3111802879 :"eggWalkRight",
+                2581195519 : "bot",
+                4294967295 : "black",
+                3368019967  : "beer",
+                2155888895 : "health",
+                4291366655 : "ship"
+
+        };
+
+        var obstacleColors = [
+
+                582044927,
+                2139062271,
+                2739512575 ,
+                4289645055,
+                4286523391,
+                4294050047,
+                10676479
+        ];
+
+
+        var assetsLoader = function(){
+                
+                this.imgs = {
+                        "eggWalkRight":"./Sprites/Benedict/Walk/Normal/normwalk_for.png",
+                        "eggWalkLeft" :"./Sprites/Benedict/Walk/Normal/normwalk_rev.png",
+                        "eggAttackNormalRight" : "./Sprites/Benedict/Attack/Normal/normsw_attack.png",
+                        "eggAttackNormalLeft" :"./Sprites/Benedict/Attack/Normal/normsw_attack_rev.png",
+                        "eggShootNormalRight" : "./Sprites/Benedict/Attack/Normal/norm_shoot_for.png",
+                        "eggShootNormalLeft" : "./Sprites/Benedict/Attack/Normal/norm_shoot_rev.png",
+                        "blue": "./Maze/blue.png",
+                        "green": "./Maze/green.png",
+                        "grey": "./Maze/grey.png",
+                        "orange": "./Maze/orange.png",
+                        "pink": "./Maze/pink.png",
+                        "purple": "./Maze/purple.png",
+                        "yellow": "./Maze/yellow.png",
+                        "floor" : "./imgs/land.png",
+                        "white" : "./Maze/white.png",
+                        "maze" : "./Maze/maze.png",
+                        "black" : "./Maze/black.png",
+                        "space" : "./imgs/space.png",
+                        "beer" : "./Maze/beer.png",
+                        "health" : "./Maze/gravity.png",
+                        "ship" : "./Maze/ship.png",
+                        "bot" : "./Sprites/Bot/Walk/botndth_for_walk.png"
+
+                };
+
+                this.total = Object.keys(this.imgs).length;
+                var loaded = 0;
+
+                this.finished = function(){
+                        startGame();
+                };
+                
+                this.load = function(dic,name){
+                        
+                        if(this[dic][name].status != 'loading'){
+                                return ;
+                        }
+
+                        else{
+                                this[dic][name].status = 'loaded';
+                                loaded += 1;
+                                if(loaded == this.total){
+                                        finished.call();
+                                }
+                        }
+                };
+
+                this.downloadAll = function(){
+                        var src;
+                        var _this = this;
+
+
+                        for(var img in this.imgs){
+                                
+                                src = this.imgs[img];
+                               (function(_this,img){
+                                       _this.imgs[img] = new Image();
+                                       _this.imgs[img].status = "loading";
+                                       _this.imgs[img].src = src;
+                                       _this.imgs[img].name = img;
+                                       _this.imgs[img].onload = function(){
+                                               load.call(_this,"imgs",img);
+                                       }
+                                })(_this,img);
+
+                        }
+                }
+        
+                return {
+                        imgs : this.imgs,
+                        total : this.total,
+                        load : this.load,
+                        downloadAll : this.downloadAll
+                };
+
+        }();
+
+        KEY_STATUS = {};
+        KEY_CODE = {
+                65:"left",
+                87:"up",
+                68:"right",
+                32:"space",
+                16:"shift"
+        };
+
+        document.onkeyup = function(e){
+
+                var keycode = e.keyCode ;
+                if(KEY_CODE[keycode]){
+                        KEY_STATUS[KEY_CODE[keycode]] = false;
+                }
+        }
+
+        document.onkeydown = function(e){
+                
+                var keycode = e.keyCode ;
+                if(KEY_CODE[keycode]){
+                        KEY_STATUS[KEY_CODE[keycode]] = true;
+                }
+        }
+        
+        function Vector(x,y,dx,dy){
+                this.x = x || 0;
+                this.y = y || 0;
+                this.dx  = dx;
+                this.dy = dy;
+        }
+
+        Vector.prototype.advance = function(){
+                this.x += this.dx;
+                this.y += this.dy;
+        };
+
+        function SpriteSheet(path,frameWidth, frameHeight){
+                
+                this.image = new Image();
+                this.image.src = path;
+                this.frameheight = frameHeight;
+                this.framewidth = frameWidth;
+                //this.framesPerRow = 3;
+                var self = this ;
+
+                this.image.onload = function(){
+                        self.framesPerRow = Math.floor(self.image.width/self.framewidth);
+                    
+                }
+        }
+
+        function Animation(spritesheet,speed,startframe,endframe){
+                
+                var animationSequence = [];
+                var counter = 0;
+                var currentFrame = 0;
+
+                for(var i=startframe ; i <= endframe ;i++){
+                        animationSequence.push(i);
+                }
+
+                this.update = function(){
+                        
+                        if(counter == speed - 1){
+                                currentFrame = (currentFrame + 1)%animationSequence.length;
+                        }
+                        counter = (counter+1)%speed;
+                };
+
+                this.draw = function(x,y){
+                        var row = Math.floor(animationSequence[currentFrame]/spritesheet.framesPerRow);
+                        var col = Math.floor(animationSequence[currentFrame] % spritesheet.framesPerRow);
+                        ctx.drawImage(
+                                        spritesheet.image,
+                                        col * spritesheet.framewidth, // Move the x axis
+                                        row * spritesheet.frameheight,
+                                        spritesheet.framewidth,
+                                        spritesheet.frameheight,
+                                        x,y,
+                                        spritesheet.framewidth,
+                                        spritesheet.frameheight
+                                     )
+
+                };
+        }
+        
+        var egg = function(player){
+                player.width = 31;
+                player.height = 32;
+                player.isColliding = false;
+                player.isJumping = false;
+                player.gravity = 0.2; 
+                player.dx = 0;
+                player.dy = 0;
+                player.type = "player";
+                player.radius = 3;
+                player.restitution = 0;
+                player.velocity = 4.2;
+                player.dt = 1;
+                player.mass = 1;
+                player.normal = {'x' : 0,'y':0};
+                player.isCollidingWithWalls = false;
+                player.onObstacle = false ;
+                player.collidableWith = "floor";
+                
+                player.health = 3; 
+                player.isShootingRight = false;
+                player.isShootingLeft = false;
+                player.isAttackingRight = false;
+                player.isAttackingLeft = false;
+                //
+                Vector.call(player,0,0,0,0);
+
+                player.spritesheetNormalWalkRight = new SpriteSheet(
+                                assetsLoader.imgs['eggWalkRight'],
+                                player.width,
+                                player.height
+                                );
+                
+                player.spritesheetNormalWalkLeft = new SpriteSheet(
+                                assetsLoader.imgs['eggWalkLeft'],
+                                player.width,
+                                player.height
+                                );
+
+                player.spritesheetAttackRight = new SpriteSheet(
+                                assetsLoader.imgs['eggAttackNormalRight'],
+                                player.width,
+                                player.height
+                                );
+                player.spritesheetAttackLeft = new SpriteSheet(
+                                assetsLoader.imgs['eggAttackNormalLeft'],
+                                player.width,
+                                player.height
+                                );
+
+                player.spritesheetShootRight = new SpriteSheet(
+                                assetsLoader.imgs['eggShootNormalRight'],
+                                player.width,
+                                player.height
+                                );
+                player.spritesheetShootLeft = new SpriteSheet(
+                                assetsLoader.imgs['eggShootNormalLeft'],
+                                player.width,
+                                player.height
+                                );
+        /*
+                player.spritesheetGravityBooze = new SpriteSheet(
+                                assetsLoader.imgs['gravityBooze'],
+                                player.width,
+                                player.height
+                        );
+*/
+                player.walkingRight = new Animation(player.spritesheetNormalWalkRight,4,0,2);
+                player.jumpingRight =new Animation(player.spritesheetNormalWalkRight,2,1,1);
+                player.stop  = new Animation(player.spritesheetNormalWalkRight,2,1,1);
+                
+                player.walkingLeft = new Animation(player.spritesheetNormalWalkLeft,4,0,2);
+                player.jumpingLeft = new Animation(player.spritesheetNormalWalkLeft,2,1,1);
+                
+                player.shootingRight = new Animation(player.spritesheetShootRight,4,0,1);
+                player.shootingLeft = new Animation(player.spritesheetShootLeft,4,0,1);
+                
+                player.attackingRight = new Animation(player.spritesheetAttackRight,4,0,1);
+                player.attackingLeft = new Animation(player.spritesheetAttackLeft,4,0,1);
+
+
+                //player.drinkGravityBooze = new Animation(player.spritesheetGravityBooze);
+                
+                
+                player.anim = player.stop;
+                player.reset = function(){
+                        player.x = 60;
+                        player.y = 100;
+                };
+                
+                var jumpCounter = 0; //Continuously hold the button
+                player.update = function(){
+
+                        if (KEY_STATUS.right){
+                                player.dx = player.velocity;
+                        }
+                        
+                        if(KEY_STATUS.space && KEY_STATUS.right){
+                                player.isShootingRight = true;
+                        }
+                        if(KEY_STATUS.space && KEY_STATUS.left){
+                                player.isShootingLeft = true;
+                        }
+
+                        if(KEY_STATUS.shift && KEY_STATUS.right){
+                                player.isAttackingRight = true;
+                        }
+                        if(KEY_STATUS.shift && KEY_STATUS.left){
+                                player.isAttackingLeft = true;
+                        }
+                        
+                        
+                        else if (KEY_STATUS.left){
+                                player.dx = -player.velocity;
+                        }
+
+                        else if(!KEY_STATUS.right && !KEY_STATUS.left){
+                                player.dx = 0;
+                        }
+                        
+                        if (!KEY_STATUS.space){
+                                player.isShooting = false;
+                        }
+
+                        if(!KEY_STATUS.shift){
+                                player.isAttacking = false;
+                        }
+
+                        if(KEY_STATUS.up && !player.isJumping && player.isColliding){
+                                player.dy = -3.8;
+                                player.isJumping = true;
+                                jumpCounter = 10;
+                        }
+                        
+                        jumpCounter = Math.max(jumpCounter-1 ,0 );
+                        if(player.isJumping && jumpCounter){
+                                player.dy = -3.8;
+                        }
+                        
+                        if(player.isColliding){
+                                resolveCollision();
+                        }
+                        else{
+                                player.dy += (player.gravity * player.dt);
+                        }
+
+                        if(player.isColliding && KEY_STATUS.up){
+                                player.dy = -player.velocity;
+                                player.isJumping = true;
+                                player.isColliding = false;
+                                KEY_STATUS.up = false;
+                        }
+                        /*
+                        }
+                        */
+                        if(player.dx > 0){
+                                player.anim = player.walkingRight;
+                        }
+                        else if (player.dx <0){
+                                player.anim = player.walkingLeft;
+                        }
+                        else{
+                                player.anim = player.stop;
+                        }
+                        if(player.dy < 0 && player.dx<0){
+                                player.anim = player.jumpingLeft;
+                        }
+                        if (player.dy < 0 && player.dx > 0){
+                                player.anim = player.jumpingRight;
+                        }
+                        if (player.dy < 0 && player.dx==0){
+                                player.anim = player.jumpingRight;
+                        }
+                        if(player.isShootingRight){
+                                player.anim = player.shootingRight ;
+                        }
+                        else if(player.isShootingLeft){
+                                player.anim = player.shootingLeft ;
+                        }
+                        if(player.isAttacking){
+                                player.anim = player.attackingRight ;
+                        }
+                        else if(player.isAttacking){
+                                player.anim = player.attackingLeft ;
+                        }
+
+                        resolveCollision();
+                        this.advance();
+                        player.anim.update()
+                };
+
+                player.draw = function(){
+                        player.anim.draw(player.x, player.y);
+                };
+
+                return player;
+
+        }(Object.create(Vector.prototype));
+
+        function Floor(x,y,value){
+                this.velocity = {};
+                this.type = "floor";
+                this.collidableWith = "player";
+                this.x = x;
+                this.y = y;
+                this.width = 30;
+                this.height = 30;
+                this.restitution = 0;
+                this.mass = Infinity;
+                this.value = value;
+
+
+                this.draw = function(){
+                        if(value == "undefined"){
+                                ctx.drawImage(assetsLoader.imgs["white"],this.x,this.y,this.width,this.height);
+                        }
+                        else{
+                                ctx.drawImage(assetsLoader.imgs[HASH_COLOR[value]],this.x,this.y,this.width,this.height);
+                        }
+                }
+
+                        
+        }
+        
+        function resolveCollision(){
+                
+                //After collision what to do 
+
+                var e = Math.min(egg.restitution,0);
+                var VelAlongNormal = 0;
+                var j;
+                var impulse = {};
+                var theta = 180;
+
+                if(egg.normal.x!=0){
+                        VelAlongNormal = egg.velocity * Math.cos(theta*Math.PI/180);
+                        var j = -(1+e)*VelAlongNormal;
+                        j /= (1/egg.mass);
+                        impulse.x = j * egg.normal.x ;
+                    
+                        egg.dx += (impulse.x);
+                }
+
+                if(egg.normal.y!=0){
+                        // If touches the ceiling 
+                        if(egg.normal.y==1){
+                                VelAlongNormal = -1*(egg.velocity - egg.dy);
+                        }
+                        
+                        // If touches the base 
+                        if(egg.normal.y == -1){
+                                VelAlongNormal = egg.dy * Math.cos(theta*Math.PI/180);
+                        }
+                        var j = -(1+e)*VelAlongNormal;
+                        j /= (1/egg.mass);
+                        impulse.y = j * egg.normal.y ;
+                        egg.dy += (1*impulse.y);
+                }
+                
+                egg.normal.x = 0;
+                egg.normal.y = 0;
+        }
+
+
+        function detectCollision(){
+
+                //Check if colliding with the floor or wall
+                //Change the value of the normals 
+/*
+                var i,j;
+                var tileWidth = 32;
+                var tileHeight = 32;
+
+                i = Math.floor(player.x/tileWidth);
+                j = Math.floor(player.y/tileHeight);
+*/
+                // Boundary Checks 
+                if(egg.y + egg.radius >= canvas.height - 64 ){
+                        egg.isColliding = true;
+                        egg.normal.y = -1;
+                        egg.onObstacle = true;
+                }
+                
+                else if (egg.y - egg.radius <= 0 ){
+                        egg.isColliding = true;
+                        egg.normal.y = 1;
+                        egg.onObstacle = false;
+                }
+
+                if (egg.x >= canvas.width - 32){
+                        egg.isCollidingWithWalls = true;
+                        egg.normal.x  = -1;
+                       
+
+                }
+
+                else if(egg.x - egg.radius<=0){
+                        egg.isCollidingWithWalls = true;
+                        egg.normal.x = 1;
+                }
+                
+                // End of boundary checking 
+
+                var tileWidth = 30;
+                var tileHeight = 30;
+                var i = Math.floor(egg.x/tileWidth);
+                var j = Math.floor(egg.y/tileHeight);
+                
+                if(obstacleColors.indexOf(map.getAt(i,j+1))>=0 || (j+1)*tileHeight-egg.y <= egg.radius && obstacleColors.indexOf(map.getAt(i,j+1))>=0){
+                        egg.isColliding = true;
+                        egg.normal.y = -1;
+                }
+                
+                else if(obstacleColors.indexOf(map.getAt(i,j))>=0 || egg.y - (j-1)*tileHeight <= egg.radius && obstacleColors.indexOf(map.getAt(i,j-1))>=0){
+                        console.log("collided.. Have to fix");
+                        egg.isColliding = true;
+                        egg.normal.y = 1;
+                }
+
+                if(obstacleColors.indexOf(map.getAt(i+1,j))>=0 || (i+1)*tileWidth  - egg.x <= egg.radius && obstacleColors.indexOf(map.getAt(i+1,j))>=0){
+                       
+                        egg.isCollidingWithWalls = true;
+                        egg.normal.x = -1;
+
+                }
+
+                else if (obstacleColors.indexOf(map.getAt(i-1,j))>=0 || egg.x - ((i-1)*tileWidth + tileWidth)<= egg.radius && obstacleColors.indexOf(map.getAt(i-1,j))>=0){
+                        console.log("Collided awesome");
+                        egg.isCollidingWithWalls = true;
+                        egg.normal.x = 1;
+                }
+    } 
+
+    function parseMap(image) {
+        var tempCanvas = document.createElement('canvas'),
+        ctx = tempCanvas.getContext('2d');
+        ctx.globalCompositeOperation = 'source-over';
+        var grid = new Uint32Array(image.width * image.height);
+        grid.width = tempCanvas.width = image.width;
+        grid.height = tempCanvas.height = image.height;
+        
+        grid.getAt = function(i, j) {
+            return grid[i * grid.width + j];
+        }
+
+        grid.assign = function(i,j,value){
+            grid[i * grid.width + j] = value;
+        }
+
+        grid.clear = function(){
+            var i, j, k;
+            for(i = 0; i < grid.width; i++) {
+                for(j = 0; j < grid.height; j++) {
+                    grid[i * grid.width + j] = 0;
+                }
+            }   
+        }
+
+        ctx.drawImage(image, 0, 0);
+        var i, j, k;
+        for(i = 0; i < grid.width; i++) {
+            for(j = 0; j < grid.height; j++) {
+                var dat = ctx.getImageData(i, j, 1, 1); // x,y,width,height.its actually i,j
+                val = 0;
+                for(k = 0; k < 4; k++) {
+                    val = val << 8 | dat.data[k];
+                }
+                grid[i * grid.width + j] = val;
+                
+                if(!(val == 4294967295 || val == 255)){
+                      //  console.log(val);
+                }
+                /*
+                */
+                
+            }
+        }
+        return grid;
+    }
+
+    function loadMap(map){
+        var i , j;
+        for(i = 0;i<map.width;i++){
+                for(j=0;j<map.height;j++){
+                        (function(){
+                                if(map.getAt(i,j) != 4294967295){
+                                        terrain.push(new Floor(i*30,j*30,map.getAt(i,j)));
+                                }
+                                else{
+                                        terrain.push(new Floor(i*30,j*30,map.getAt(i,j)));
+                                }
+                        })();
+                }
+        }
+    }
+    function updateTerrain(){
+                for(var i=0;i<terrain.length;i++){
+                        terrain[i].draw();
+                }
+    }
+
+    function animate(){
+
+                requestAnimFrame(animate);
+                ctx.clearRect(0,0,width,height);
+                var background = document.getElementById('background');
+                updateTerrain();
+                egg.update();
+                egg.draw();
+
+                egg.isColliding = false;
+                egg.isCollidingWithWalls = false;
+                egg.onObstacle = false;
+                detectCollision();
+        }
+
+    function startGame(){
+                
+                console.log("Let the game begin");
+                map = parseMap(assetsLoader.imgs["maze"]);
+                loadMap(map);
+                for(var i =0;i<terrain.length;i++){
+                        if(typeof(HASH_COLOR[terrain[i].value]) == "undefined"){
+
+                        }
+                        
+                }
+                egg.reset();
+               animate();
+    }
+        
+    assetsLoader.downloadAll();
+})()
